@@ -1,0 +1,8 @@
+{
+  "name": "nemu",
+  "version": "1.8.0",
+  "description": "Project memory and vaults that follow you across machines and agents, with /remember and /inspo",
+  "author": { "name": "Nemu" },
+  "homepage": "https://docs.nemu.cc/context/claude-code",
+  "license": "MIT"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "nemu",
+  "owner": { "name": "Nemu" },
+  "metadata": {
+    "description": "Nemu Context for Claude Code, installed by nemu setup claude"
+  },
+  "plugins": [
+    {
+      "name": "nemu",
+      "source": "./nemu",
+      "description": "Project memory and vaults that follow you across machines and agents, with /remember and /inspo"
+    }
+  ]
+}
