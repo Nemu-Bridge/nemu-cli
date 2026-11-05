@@ -514,6 +514,26 @@ describe("nemu sync against a fake vault", () => {
     await expect(stat(lock_path(a.root))).rejects.toThrow();
   });
 
+  test("a file above one request's size goes up in parts when the plan allows it", async () => {
+    const vault = new FakeVault();
+    vault.max_file_bytes = 1000;
+    vault.max_upload_file_bytes = 10_000;
+    const a = await device(vault, "a");
+    const big = Buffer.from(Array.from({ length: 2500 }, (_, index) => index % 251));
+    await put(a, "art/map.png", big);
+    await put(a, "huge.bin", Buffer.alloc(20_000));
+    const report = await sync(a);
+    expect(report.pushed).toEqual(["art/map.png"]);
+    expect(vault.uploads.size).toBe(0);
+    const stored = [...vault.notes.values()].find((note) => note.path === "art/map.png");
+    expect(stored?.content.equals(big)).toBe(true);
+    expect(report.skipped.map((entry) => entry.path)).toEqual(["huge.bin"]);
+
+    const b = await device(vault, "b");
+    await sync(b);
+    expect((await readFile(join(b.root, "art/map.png"))).equals(big)).toBe(true);
+  });
+
   test("ignored, symlinked, oversized and Windows-forbidden files are skipped and reported", async () => {
     const vault = new FakeVault();
     vault.max_file_bytes = 1000;

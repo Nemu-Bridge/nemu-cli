@@ -311,7 +311,10 @@ async function sync_locked(options: SyncOptions): Promise<SyncReport> {
     throw error;
   }
   if (info.limits !== undefined) state.limits = info.limits;
-  const max_file_bytes = state.limits?.max_file_bytes ?? DEFAULT_MAX_FILE_BYTES;
+  const max_file_bytes =
+    state.limits?.part_bytes !== undefined && state.limits.max_upload_file_bytes !== undefined
+      ? Math.max(state.limits.max_file_bytes, state.limits.max_upload_file_bytes)
+      : (state.limits?.max_file_bytes ?? DEFAULT_MAX_FILE_BYTES);
 
   const max_cycles = options.max_cycles ?? 4;
   for (let cycle = 1; cycle <= max_cycles; cycle += 1) {

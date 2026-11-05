@@ -45,11 +45,21 @@ const info_schema = z.object({
     .object({
       max_file_bytes: z.number(),
       max_storage_bytes: z.number().nullable(),
+      max_upload_file_bytes: z.number().optional(),
+      part_bytes: z.number().optional(),
     })
     .optional(),
 });
 
 export type VaultInfo = z.infer<typeof info_schema>;
+
+const started_schema = z.object({
+  data: z.object({
+    upload_id: z.string(),
+    part_bytes: z.number().int().positive(),
+    parts: z.number().int().positive(),
+  }),
+});
 
 const version_schema = z.object({
   version: z.number().int(),
@@ -144,6 +154,9 @@ export interface VaultClient {
 }
 
 export class VaultApi implements VaultClient {
+  private single_bytes: number | null = null;
+  private can_upload_parts = false;
+
   constructor(
     private readonly transport: Transport,
     readonly vault_id: string,
@@ -172,7 +185,52 @@ export class VaultApi implements VaultClient {
 
   async info(): Promise<VaultInfo> {
     const response = await this.call("GET", this.base());
-    return parse(info_schema, await response.json());
+    const info = parse(info_schema, await response.json());
+    if (info.limits !== undefined) {
+      this.single_bytes = info.limits.max_file_bytes;
+      this.can_upload_parts =
+        info.limits.part_bytes !== undefined &&
+        (info.limits.max_upload_file_bytes ?? 0) > info.limits.max_file_bytes;
+    }
+    return info;
+  }
+
+  private async write_parts(
+    path: string,
+    content: Uint8Array,
+    base_version: number | null,
+    sealed?: SealedWrite,
+  ): Promise<RemoteNote> {
+    const uploads = `${this.base()}/uploads`;
+    const response = await this.call("POST", uploads, {
+      headers: { "content-type": "application/json", "x-nemu-client": this.client_label },
+      body: JSON.stringify({
+        path,
+        size: content.length,
+        base_version,
+        ...(sealed === undefined ? {} : { sealed_path: sealed.sealed_path, content_hash: sealed.content_hash }),
+      }),
+    });
+    const upload = parse(started_schema, await response.json()).data;
+    try {
+      for (let index = 0; index < upload.parts; index += 1) {
+        await this.call("PUT", `${uploads}/${upload.upload_id}/${index}`, {
+          headers: { "content-type": "application/octet-stream", "x-nemu-client": this.client_label },
+          body: content.subarray(index * upload.part_bytes, (index + 1) * upload.part_bytes),
+          timeout_ms: 120_000,
+        });
+      }
+      const finished = await this.call("POST", `${uploads}/${upload.upload_id}`, {
+        headers: { "x-nemu-client": this.client_label },
+        timeout_ms: 300_000,
+      });
+      return parse(z.object({ data: note_schema }), await finished.json()).data;
+    } catch (error) {
+      await this.call("DELETE", `${uploads}/${upload.upload_id}`, {
+        headers: { "x-nemu-client": this.client_label },
+      }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async notes(trash = false): Promise<{ revision: number; notes: RemoteNote[] }> {
@@ -218,6 +276,9 @@ export class VaultApi implements VaultClient {
     base_version: number | null,
     sealed?: SealedWrite,
   ): Promise<RemoteNote> {
+    if (this.can_upload_parts && this.single_bytes !== null && content.length > this.single_bytes) {
+      return this.write_parts(path, content, base_version, sealed);
+    }
     const response = await this.call("PUT", `${this.base()}/files`, {
       query: { path },
       headers: {

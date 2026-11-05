@@ -53,6 +53,11 @@ export class FakeVault {
   revision = 0;
   pruned_revision = 0;
   max_file_bytes = 4 * 1024 * 1024;
+  max_upload_file_bytes: number | null = null;
+  readonly uploads = new Map<
+    string,
+    { path: string; size: number; base_version: number | null; sealed_path?: string; content_hash?: string; parts: Map<number, Buffer> }
+  >();
   storage_full = false;
   refuse: { status: number; code: string } | null = null;
   requests = 0;
@@ -148,8 +153,68 @@ export class FakeVault {
       return json(200, {
         data: { id: this.id, name: "Test", mode: this.mode, revision: this.revision },
         workspace_id: "ws_test",
-        limits: { max_file_bytes: this.max_file_bytes, max_storage_bytes: null },
+        limits: {
+          max_file_bytes: this.max_file_bytes,
+          max_storage_bytes: null,
+          ...(this.max_upload_file_bytes === null
+            ? {}
+            : { max_upload_file_bytes: this.max_upload_file_bytes, part_bytes: this.max_file_bytes }),
+        },
       });
+    }
+    if (method === "POST" && path === `${base}/uploads`) {
+      const start = JSON.parse(body.toString("utf-8")) as {
+        path: string;
+        size: number;
+        base_version: number | null;
+        sealed_path?: string;
+        content_hash?: string;
+      };
+      if (this.max_upload_file_bytes === null || start.size > this.max_upload_file_bytes) {
+        return json(413, { error: "too large", code: "file_too_large" });
+      }
+      const upload_id = randomUUID();
+      this.uploads.set(upload_id, { ...start, parts: new Map() });
+      return json(201, {
+        data: { upload_id, part_bytes: this.max_file_bytes, parts: Math.ceil(start.size / this.max_file_bytes) },
+      });
+    }
+    const upload_match = path.startsWith(`${base}/uploads/`) ? path.slice(`${base}/uploads/`.length).split("/") : null;
+    if (upload_match !== null) {
+      const upload = this.uploads.get(upload_match[0] ?? "");
+      if (upload === undefined) return json(404, { error: "unknown upload", code: "upload_not_found" });
+      if (method === "PUT" && upload_match.length === 2) {
+        upload.parts.set(Number(upload_match[1]), body);
+        return json(200, { data: { received: upload.parts.size } });
+      }
+      if (method === "DELETE") {
+        this.uploads.delete(upload_match[0] ?? "");
+        return new Response(null, { status: 204 });
+      }
+      if (method === "POST") {
+        this.uploads.delete(upload_match[0] ?? "");
+        const joined = Buffer.concat(
+          [...upload.parts.entries()].sort(([left], [right]) => left - right).map(([, part]) => part),
+        );
+        if (joined.length !== upload.size) return json(422, { error: "corrupt", code: "upload_corrupt" });
+        const saved_limit = this.max_file_bytes;
+        this.max_file_bytes = Number.MAX_SAFE_INTEGER;
+        try {
+          return await this.transport("PUT", `${base}/files`, {
+            query: { path: upload.path },
+            headers: {
+              ...(client === null ? {} : { "x-nemu-client": client }),
+              ...(upload.base_version === null ? { "if-none-match": "*" } : { "if-match": `"${upload.base_version}"` }),
+              ...(upload.sealed_path === undefined || upload.content_hash === undefined
+                ? {}
+                : { "x-nemu-sealed-path": upload.sealed_path, "x-nemu-content-mac": upload.content_hash }),
+            },
+            body: joined,
+          });
+        } finally {
+          this.max_file_bytes = saved_limit;
+        }
+      }
     }
     if (method === "GET" && path === `${base}/notes`) {
       const trash = query.trash === "true";

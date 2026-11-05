@@ -1,9 +1,11 @@
 # Changelog
 
-## 1.8.1
+## 1.9.0
 
-The source is public at [Nemu-Bridge/nemu-cli](https://github.com/Nemu-Bridge/nemu-cli), and the npm
-page links to it. Nothing else changed.
+`nemu sync` sends a file larger than one request, up to your plan's largest file (100 MB on paid
+plans), in parts, and a failed upload is cancelled so no parts are left behind. Earlier versions
+skip such files. The source is public at
+[Nemu-Bridge/nemu-cli](https://github.com/Nemu-Bridge/nemu-cli), and the npm page links to it.
 
 ## 1.8.0
 

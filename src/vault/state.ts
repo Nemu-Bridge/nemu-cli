@@ -44,7 +44,12 @@ const state_schema = z.object({
   ignore_fingerprint: z.string().default(""),
   settings: settings_schema.default({ conflicts: "merge", obsidian: false, obsidian_plugins: false }),
   limits: z
-    .object({ max_file_bytes: z.number(), max_storage_bytes: z.number().nullable() })
+    .object({
+      max_file_bytes: z.number(),
+      max_storage_bytes: z.number().nullable(),
+      max_upload_file_bytes: z.number().optional(),
+      part_bytes: z.number().optional(),
+    })
     .nullable()
     .default(null),
   files: z.record(z.string(), base_schema),
