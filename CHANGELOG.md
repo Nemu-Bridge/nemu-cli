@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1
+
+The source is public at [Nemu-Bridge/nemu-cli](https://github.com/Nemu-Bridge/nemu-cli), and the npm
+page links to it. Nothing else changed.
+
 ## 1.8.0
 
 `nemu status` now asks Nemu about this computer instead of only reading local files. It shows a
