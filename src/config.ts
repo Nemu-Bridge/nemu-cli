@@ -35,7 +35,11 @@ const settings_schema = z.object({
   update_declined_at: z.number().optional(),
   setup_version: z.string().max(64).optional(),
   context_workspace: z.string().min(1).max(64).optional(),
+  toolkits: z.record(z.string(), z.array(z.enum(["context", "studio"]))).optional(),
 });
+
+export const TOOLKITS = ["context", "studio"] as const;
+export type Toolkit = (typeof TOOLKITS)[number];
 
 export type StoredSettings = z.infer<typeof settings_schema>;
 

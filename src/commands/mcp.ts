@@ -8,6 +8,7 @@ import { CliError } from "../errors.js";
 import { current_project } from "../context/project.js";
 import { repository } from "../git.js";
 import { VERSION } from "../version.js";
+import { note_server_upgrade } from "../update.js";
 import { out } from "../ui.js";
 
 const CLIENTS = ["claude-code", "codex", "cursor", "zed", "gemini", "vscode", "windsurf", "opencode", "mcp"] as const;
@@ -23,6 +24,8 @@ const rpc_schema = z.object({
 type RpcMessage = z.infer<typeof rpc_schema>;
 
 const BRANCH_TOOLS = new Set(["context_load", "memory_write"]);
+const REQUEST_TIMEOUT_MS = 30_000;
+const TOOL_CALL_TIMEOUT_MS = 120_000;
 
 function write_line(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -116,6 +119,8 @@ async function forward(message: RpcMessage, state: BridgeState, client: ClientNa
   const agent = await read_agent_state(client, process.cwd());
   if (agent?.model !== undefined) headers["x-nemu-model"] = agent.model;
   if (agent?.session_id !== undefined) headers["x-nemu-session"] = agent.session_id;
+  const toolkits = settings.toolkits?.[client];
+  if (toolkits !== undefined && toolkits.length > 0) headers["x-nemu-toolkits"] = toolkits.join(",");
 
   let response: Response;
   try {
@@ -123,12 +128,13 @@ async function forward(message: RpcMessage, state: BridgeState, client: ClientNa
       method: "POST",
       headers,
       body: JSON.stringify(with_branch(message, state.branch)),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(message.method === "tools/call" ? TOOL_CALL_TIMEOUT_MS : REQUEST_TIMEOUT_MS),
     });
   } catch {
     rpc_failure(message.id, `Could not reach ${credentials.api_url}`);
     return;
   }
+  note_server_upgrade(response.headers.get("nemu-client-upgrade"));
   if (response.status === 202) return;
   const body: unknown = await response.json().catch(() => null);
   if (body !== null && typeof body === "object" && "jsonrpc" in body) {

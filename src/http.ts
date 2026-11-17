@@ -3,6 +3,7 @@ import { API_VERSION, read_settings } from "./config.js";
 import { fresh_credentials } from "./auth/token.js";
 import { CliError } from "./errors.js";
 import { VERSION } from "./version.js";
+import { note_server_upgrade } from "./update.js";
 
 const error_body = z.object({
   error: z.string().optional(),
@@ -67,6 +68,7 @@ export async function send(method: string, path: string, options: SendOptions = 
       body: options.body,
       signal: AbortSignal.timeout(options.timeout_ms ?? 20_000),
     });
+    note_server_upgrade(response.headers.get("nemu-client-upgrade"));
     return { api_url: credentials.api_url, response };
   } catch {
     throw new CliError(`Could not reach ${credentials.api_url}.`, "network_failed");

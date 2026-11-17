@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fetch_latest, is_newer, latest_version } from "../src/update.js";
+import { fetch_latest, is_newer, latest_version, upgrade_note } from "../src/update.js";
 import { read_settings } from "../src/config.js";
 
 let directory = "";
@@ -88,5 +88,20 @@ describe("asking the registry", () => {
     process.env.NEMU_REGISTRY_URL = "http://127.0.0.1:9";
     expect(await latest_version(true, now + 60_000)).toBe("1.5.0");
     process.env.NEMU_REGISTRY_URL = `http://127.0.0.1:${server.port}`;
+  });
+});
+
+describe("server upgrade notice", () => {
+  test("an outdated header names the newer version and the command", () => {
+    const note = upgrade_note("recommended; current=1.9.0; latest=1.10.0", "1.9.0");
+    expect(note).toContain("1.10.0");
+    expect(note).toContain("nemu update");
+  });
+
+  test("nothing is said when the server knows no newer version", () => {
+    expect(upgrade_note("recommended; current=1.9.0; latest=1.9.0", "1.9.0")).toBeNull();
+    expect(upgrade_note("recommended; current=2.0.0; latest=1.10.0", "2.0.0")).toBeNull();
+    expect(upgrade_note(null, "1.9.0")).toBeNull();
+    expect(upgrade_note("garbage", "1.9.0")).toBeNull();
   });
 });

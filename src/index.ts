@@ -37,6 +37,7 @@ import { maybe_offer_update, update_command } from "./update.js";
 import { migrate_after_update } from "./migrations.js";
 import { repair } from "./commands/repair.js";
 import { vault } from "./commands/vault.js";
+import { studio } from "./commands/studio.js";
 import { sync } from "./commands/sync.js";
 import { CliError } from "./errors.js";
 import { VERSION } from "./version.js";
@@ -81,13 +82,14 @@ const COMMANDS: Record<string, Handler> = {
   repair,
   vault,
   sync,
+  studio,
 };
 
 const HELP = `
   ${bold("nemu")} ${dim(VERSION)}
 
   ${bold("Context for coding agents")}
-    setup <claude|codex> [--hooks|--no-hooks] [--yes]
+    setup <claude|codex> [--toolkits context,studio] [--hooks|--no-hooks] [--yes]
                                         Connect Claude Code (aliases cc, claude-code) or Codex
     setup <cursor|vscode|gemini|windsurf|zed|opencode>
                                         Add the Nemu MCP server to that editor's config
@@ -109,6 +111,12 @@ const HELP = `
     config get | set reports on|off     Error reports sent after a failure
     update [--yes]                      Check for a new version and install it
     repair                              Bring hooks and editor entries up to date
+
+  ${bold("Studio")}
+    studio create "<prompt>" [--model <name>] [--count n] [--out <path>] [--detach]
+                                        Build a 3D model in Nemu's cloud and save the GLB
+    studio jobs | wait <job> | open <id> | export <preview> | cancel <job> | texture <file>
+                                        Follow, collect and open Studio work (studio help)
 
   ${bold("Vaults")}
     vault list                          Vaults in this workspace
@@ -251,7 +259,8 @@ async function report_failure(error: unknown): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
   const server_reference = error instanceof CliError ? error.reference : undefined;
   const parsed = parse_args(argv.slice(1));
-  const reference = UNREPORTED.has(command) || COMMANDS[command] === undefined
+  const is_upgrade_refusal = error instanceof CliError && error.code === "client_upgrade_required";
+  const reference = is_upgrade_refusal || UNREPORTED.has(command) || COMMANDS[command] === undefined
     ? null
     : await send_report({
         command,

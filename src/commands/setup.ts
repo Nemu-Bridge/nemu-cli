@@ -10,6 +10,8 @@ import { install_hooks } from "../clients/hooks.js";
 import { client_from_name, client_installed, type ClientSpec } from "../clients/registry.js";
 import { editor_from_name, require_editor, type EditorSpec } from "../clients/editors.js";
 import { login } from "./login.js";
+import { choose_toolkits, toolkit_line } from "../clients/toolkits.js";
+import type { Toolkit } from "../config.js";
 
 function newer_or_equal(found: string, wanted: string): boolean {
   const parse = (value: string) => value.split(/[.-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
@@ -87,6 +89,7 @@ async function choose_hooks(args: Args, spec: ClientSpec): Promise<boolean> {
 export interface SetupResult {
   client: string;
   hooks: boolean;
+  toolkits: Toolkit[];
   nemu: string;
   device_id: string;
 }
@@ -99,9 +102,10 @@ export async function run_setup(spec: ClientSpec, args: Args): Promise<SetupResu
   const device_id = await ensure_device(bool_flag(args, "new-device"));
   const nemu = await resolve_nemu_binary(is_interactive() && !bool_flag(args, "no-install"));
   await spec.add_mcp(nemu);
-  const hooks = await choose_hooks(args, spec);
+  const toolkits = await choose_toolkits(args, spec.id, spec.label);
+  const hooks = toolkits.includes("context") && (await choose_hooks(args, spec));
   if (hooks) await install_hooks(spec.hooks_path(), nemu, spec.id);
-  return { client: spec.id, hooks, nemu, device_id };
+  return { client: spec.id, hooks, toolkits, nemu, device_id };
 }
 
 async function setup_editor(editor: EditorSpec, args: Args): Promise<number> {
@@ -110,12 +114,13 @@ async function setup_editor(editor: EditorSpec, args: Args): Promise<number> {
   const device_id = await ensure_device(bool_flag(args, "new-device"));
   const nemu = await resolve_nemu_binary(is_interactive() && !bool_flag(args, "no-install"));
   const { change, backup } = await editor.add(nemu);
+  const toolkits = await choose_toolkits(args, editor.id, editor.label);
   if (is_json_mode()) {
-    emit({ ok: true, client: editor.id, change, config: editor.config_path(), backup, nemu, device_id });
+    emit({ ok: true, client: editor.id, change, config: editor.config_path(), backup, nemu, device_id, toolkits });
     return 0;
   }
   out();
-  success(`${editor.label} is connected to Nemu Context`);
+  success(`${editor.label} is connected to Nemu ${toolkit_line(toolkits)}`);
   out(
     dim(
       change === "unchanged"
@@ -140,7 +145,7 @@ export async function setup(args: Args): Promise<number> {
     return 0;
   }
   out();
-  success(`${spec.label} is connected to Nemu Context`);
+  success(`${spec.label} is connected to Nemu ${toolkit_line(result.toolkits)}`);
   out(dim(`  MCP server "nemu" registered${result.hooks ? `, hooks added to ${spec.hooks_path()}` : ", no hooks"}`));
   for (const line of spec.after_setup) out(`  ${line}`);
   if (!result.hooks) out(dim(`  Add hooks later with: nemu setup ${spec.binary} --hooks`));

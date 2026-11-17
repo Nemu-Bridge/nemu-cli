@@ -16,6 +16,25 @@ const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
 const registry_schema = z.object({ version: z.string().regex(SEMVER) });
 
+const SERVER_LATEST = /\blatest=(\d+\.\d+\.\d+)\b/;
+let has_noted_upgrade = false;
+
+export function upgrade_note(header: string | null, current = VERSION): string | null {
+  if (header === null) return null;
+  const match = SERVER_LATEST.exec(header);
+  const latest = match?.[1];
+  if (latest === undefined || !is_newer(latest, current)) return null;
+  return `nemu-cli ${current} is out of date and will stop working soon. ${latest} is available. Run: nemu update`;
+}
+
+export function note_server_upgrade(header: string | null): void {
+  if (has_noted_upgrade || is_json_mode()) return;
+  const note = upgrade_note(header);
+  if (note === null) return;
+  has_noted_upgrade = true;
+  process.stderr.write(`${dim(note)}\n`);
+}
+
 function registry_url(): string {
   const base = (process.env.NEMU_REGISTRY_URL ?? "https://registry.npmjs.org").replace(/\/+$/, "");
   return `${base}/${PACKAGE}/latest`;
