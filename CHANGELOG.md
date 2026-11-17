@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.10.0
+
+`nemu studio` builds 3D models with Nemu Studio from the terminal: `create` starts a cloud job and
+waits for the file, `jobs`, `wait`, `open`, `export` and `cancel` manage them, and `texture` turns an
+image into an image_id for a scene. `nemu setup` asks which toolkits an agent gets, Context and now
+Studio, so an agent can build and export models over MCP. The hooks send the agent's model and
+session to Context, and other agents' unread messages show on every prompt. When Nemu marks this
+version as out of date, the CLI says so once per run with the command that updates it, and a
+version Nemu no longer accepts is refused with that command and is not sent as an error report.
+
 ## 1.9.0
 
 `nemu sync` sends a file larger than one request, up to your plan's largest file (100 MB on paid
