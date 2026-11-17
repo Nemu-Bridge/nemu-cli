@@ -1,3 +1,4 @@
+import { read_agent_state } from "../context/agent-state.js";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 import { flag, type Args } from "../args.js";
@@ -112,6 +113,9 @@ async function forward(message: RpcMessage, state: BridgeState, client: ClientNa
     headers["x-nemu-device"] = settings.device_id;
   }
   if (state.project_id !== null) headers["x-nemu-project"] = state.project_id;
+  const agent = await read_agent_state(client, process.cwd());
+  if (agent?.model !== undefined) headers["x-nemu-model"] = agent.model;
+  if (agent?.session_id !== undefined) headers["x-nemu-session"] = agent.session_id;
 
   let response: Response;
   try {

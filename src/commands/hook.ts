@@ -10,6 +10,7 @@ import { current_project } from "../context/project.js";
 import { snapshot } from "../context/snapshot.js";
 import { repository } from "../git.js";
 import { migrate_after_update } from "../migrations.js";
+import { clean_model, save_agent_state } from "../context/agent-state.js";
 
 const MAX_CONTEXT: Record<string, number> = { "claude-code": 9000, codex: 7500 };
 const CHECKPOINT_EDITS = 3;
@@ -145,6 +146,10 @@ async function take_pending(root: string): Promise<{ files: string[]; ended_at: 
 async function on_start(client: string, input: HookInput): Promise<void> {
   const cwd = input.cwd ?? process.cwd();
   const session = input.session_id ?? "unknown";
+  await save_agent_state(client, cwd, {
+    model: clean_model(Reflect.get(input, "model")),
+    session_id: input.session_id,
+  });
   await mkdir(sessions_dir(), { recursive: true, mode: 0o700 });
   await prune_sessions();
 
