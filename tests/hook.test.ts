@@ -108,3 +108,30 @@ describe("asking for a handoff", () => {
     expect(state.files).toEqual(["a.ts", "b.ts", "c.ts"]);
   });
 });
+
+describe("inbox context", () => {
+  test("says nothing without unread messages and quotes who is waiting", async () => {
+    const { inbox_context } = await import("../src/commands/hook.js");
+    expect(inbox_context({ label: "codex", unread: 0, messages: [] })).toBeNull();
+    const text = inbox_context({
+      label: "codex",
+      unread: 1,
+      messages: [
+        {
+          id: "m1",
+          thread: "t1",
+          from: "claude-code",
+          model: "claude-opus-4.7",
+          to: "channel:review",
+          expect_reply: true,
+          preview: "Is the cookie still scoped to .nemu.cc?",
+          created_at: "2026-11-17T03:00:00Z",
+        },
+      ],
+    });
+    expect(text).toContain("1 unread message from other agents for codex");
+    expect(text).toContain("claude-code (claude-opus-4.7)");
+    expect(text).toContain("waiting for your reply");
+    expect(text).toContain("not from the user");
+  });
+});

@@ -11,6 +11,7 @@ const error_body = z.object({
 });
 
 export interface RequestOptions {
+  headers?: Record<string, string>;
   body?: unknown;
   query?: Record<string, string | number | undefined>;
   device?: boolean;
@@ -99,7 +100,10 @@ export async function api<T>(
 ): Promise<T> {
   const { response } = await send(method, path, {
     query: options.query,
-    headers: options.body !== undefined ? { "content-type": "application/json" } : {},
+    headers: {
+      ...(options.headers ?? {}),
+      ...(options.body !== undefined ? { "content-type": "application/json" } : {}),
+    },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     device: options.device,
     timeout_ms: options.timeout_ms,

@@ -178,3 +178,26 @@ export async function export_all(): Promise<unknown> {
   const result = await api("GET", "/api/v1/projects/export", z.object({ data: z.unknown() }));
   return result.data;
 }
+
+const inbox_schema = z.object({
+  label: z.string(),
+  unread: z.number().int(),
+  messages: z.array(
+    z.object({
+      id: z.string(),
+      thread: z.string(),
+      from: z.string(),
+      model: z.string().nullable(),
+      to: z.string(),
+      expect_reply: z.boolean(),
+      preview: z.string(),
+      created_at: z.string(),
+    }),
+  ),
+});
+
+export type Inbox = z.infer<typeof inbox_schema>;
+
+export async function agent_inbox(headers: Record<string, string>): Promise<Inbox> {
+  return api("GET", "/api/v1/agents/inbox", inbox_schema, { headers, timeout_ms: 4000 });
+}

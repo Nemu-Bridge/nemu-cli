@@ -67,6 +67,6 @@ describe("hook commands for Codex on Windows", () => {
     expect(text).not.toContain('\\"C:');
     expect(text).toContain(`"command": ${JSON.stringify(`${PLAIN} hook start --client codex`)}`);
     expect(await needs_repair(path, "win32")).toBe(false);
-    expect(await installed_hooks(path)).toEqual(["SessionStart", "PostToolUse", "Stop", "PreCompact", "SessionEnd"]);
+    expect(await installed_hooks(path)).toEqual(["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "PreCompact", "SessionEnd"]);
   });
 });

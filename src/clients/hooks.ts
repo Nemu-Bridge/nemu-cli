@@ -4,7 +4,7 @@ import { z } from "zod";
 import { CliError } from "../errors.js";
 
 export type HookClient = "claude-code" | "codex";
-export type HookEvent = "start" | "tool" | "stop" | "compact" | "end";
+export type HookEvent = "start" | "prompt" | "tool" | "stop" | "compact" | "end";
 
 interface HookSpec {
   event: string;
@@ -16,6 +16,7 @@ interface HookSpec {
 export const HOOK_SPECS: Record<HookClient, HookSpec[]> = {
   "claude-code": [
     { event: "SessionStart", hook: "start", matcher: "startup|resume|clear|compact", timeout: 20 },
+    { event: "UserPromptSubmit", hook: "prompt", timeout: 5 },
     { event: "PostToolUse", hook: "tool", matcher: "Edit|Write|MultiEdit|NotebookEdit|mcp__nemu__memory_write", timeout: 5 },
     { event: "Stop", hook: "stop", timeout: 10 },
     { event: "PreCompact", hook: "compact", matcher: "manual|auto", timeout: 5 },
@@ -23,6 +24,7 @@ export const HOOK_SPECS: Record<HookClient, HookSpec[]> = {
   ],
   codex: [
     { event: "SessionStart", hook: "start", matcher: "^(startup|resume|clear|compact)$", timeout: 20 },
+    { event: "UserPromptSubmit", hook: "prompt", timeout: 5 },
     { event: "PostToolUse", hook: "tool", timeout: 5 },
     { event: "Stop", hook: "stop", timeout: 10 },
     { event: "PreCompact", hook: "compact", timeout: 5 },
@@ -44,7 +46,7 @@ const config_schema = z
 
 type HookConfig = z.infer<typeof config_schema>;
 
-const OWN_COMMAND = /(?:^|[\\/"'\s])nemu(?:\.cmd|\.exe)?["']?\s+hook\s+(?:start|tool|stop|compact|end)\b/;
+const OWN_COMMAND = /(?:^|[\\/"'\s])nemu(?:\.cmd|\.exe)?["']?\s+hook\s+(?:start|prompt|tool|stop|compact|end)\b/;
 
 export function is_own_command(command: string | undefined): boolean {
   return command !== undefined && OWN_COMMAND.test(command);
