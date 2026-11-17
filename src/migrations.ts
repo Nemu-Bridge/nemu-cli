@@ -10,8 +10,8 @@ import { join } from "node:path";
 export interface Migration {
   id: string;
   label: string;
-  needed: (nemu: string) => Promise<boolean>;
-  apply: (nemu: string) => Promise<boolean>;
+  needed: (nemu: string, setup_version: string | undefined) => Promise<boolean>;
+  apply: (nemu: string, setup_version: string | undefined) => Promise<boolean>;
 }
 
 export interface MigrationReport {
@@ -25,8 +25,10 @@ export const MIGRATIONS: Migration[] = [
   ...Object.values(CLIENTS).map((spec) => ({
     id: `hooks:${spec.id}`,
     label: `${spec.label}: updated the Nemu hooks`,
-    needed: (nemu: string) => hooks_outdated(spec.hooks_path(), nemu, spec.id),
-    apply: (nemu: string) => refresh_hooks(spec.hooks_path(), nemu, spec.id),
+    needed: (nemu: string, setup_version: string | undefined) =>
+      hooks_outdated(spec.hooks_path(), nemu, spec.id, process.platform, setup_version),
+    apply: (nemu: string, setup_version: string | undefined) =>
+      refresh_hooks(spec.hooks_path(), nemu, spec.id, process.platform, setup_version),
   })),
   ...Object.values(EDITORS).map((editor) => ({
     id: `mcp:${editor.id}`,
@@ -49,10 +51,11 @@ export async function run_migrations(migrations: Migration[] = MIGRATIONS): Prom
   const report: MigrationReport = { applied: [], failed: [] };
   const nemu = await resolve_nemu_binary(false).catch(() => null);
   if (nemu === null) return report;
+  const setup_version = (await read_settings().catch(() => null))?.setup_version;
   for (const migration of migrations) {
     try {
-      if (!(await migration.needed(nemu))) continue;
-      if (await migration.apply(nemu)) report.applied.push(migration.label);
+      if (!(await migration.needed(nemu, setup_version))) continue;
+      if (await migration.apply(nemu, setup_version)) report.applied.push(migration.label);
     } catch (error) {
       report.failed.push(migration.label);
       await log_failure(migration.id, error);

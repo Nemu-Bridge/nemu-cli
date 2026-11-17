@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, rename, copyFile, access, chmod, stat } fro
 import { dirname, win32 } from "node:path";
 import { z } from "zod";
 import { CliError } from "../errors.js";
+import { is_newer } from "../update.js";
 
 export type HookClient = "claude-code" | "codex";
 export type HookEvent = "start" | "prompt" | "tool" | "stop" | "compact" | "end";
@@ -11,12 +12,13 @@ interface HookSpec {
   hook: HookEvent;
   matcher?: string;
   timeout: number;
+  since?: string;
 }
 
 export const HOOK_SPECS: Record<HookClient, HookSpec[]> = {
   "claude-code": [
     { event: "SessionStart", hook: "start", matcher: "startup|resume|clear|compact", timeout: 20 },
-    { event: "UserPromptSubmit", hook: "prompt", timeout: 5 },
+    { event: "UserPromptSubmit", hook: "prompt", timeout: 5, since: "1.10.1" },
     { event: "PostToolUse", hook: "tool", matcher: "Edit|Write|MultiEdit|NotebookEdit|mcp__nemu__memory_write", timeout: 5 },
     { event: "Stop", hook: "stop", timeout: 10 },
     { event: "PreCompact", hook: "compact", matcher: "manual|auto", timeout: 5 },
@@ -24,7 +26,7 @@ export const HOOK_SPECS: Record<HookClient, HookSpec[]> = {
   ],
   codex: [
     { event: "SessionStart", hook: "start", matcher: "^(startup|resume|clear|compact)$", timeout: 20 },
-    { event: "UserPromptSubmit", hook: "prompt", timeout: 5 },
+    { event: "UserPromptSubmit", hook: "prompt", timeout: 5, since: "1.10.1" },
     { event: "PostToolUse", hook: "tool", timeout: 5 },
     { event: "Stop", hook: "stop", timeout: 10 },
     { event: "PreCompact", hook: "compact", timeout: 5 },
@@ -144,6 +146,17 @@ export async function needs_repair(path: string, platform: NodeJS.Platform = pro
   );
 }
 
+function own_group(spec: HookSpec, nemu: string, client: HookClient, platform: NodeJS.Platform) {
+  return {
+    ...(spec.matcher !== undefined ? { matcher: spec.matcher } : {}),
+    hooks: [{ type: "command", command: hook_command(nemu, spec.hook, client, platform), timeout: spec.timeout }],
+  };
+}
+
+function is_introduced_since(spec: HookSpec, setup_version: string | undefined): boolean {
+  return spec.since !== undefined && setup_version !== undefined && is_newer(spec.since, setup_version);
+}
+
 export async function install_hooks(
   path: string,
   nemu: string,
@@ -153,11 +166,7 @@ export async function install_hooks(
   const config = without_own(await read_config(path));
   const hooks = { ...(config.hooks ?? {}) };
   for (const spec of HOOK_SPECS[client]) {
-    const group = {
-      ...(spec.matcher !== undefined ? { matcher: spec.matcher } : {}),
-      hooks: [{ type: "command", command: hook_command(nemu, spec.hook, client, platform), timeout: spec.timeout }],
-    };
-    hooks[spec.event] = [...(hooks[spec.event] ?? []), group];
+    hooks[spec.event] = [...(hooks[spec.event] ?? []), own_group(spec, nemu, client, platform)];
   }
   await write_config(path, { ...config, hooks });
 }
@@ -196,6 +205,7 @@ function refreshed(
   nemu: string,
   client: HookClient,
   platform: NodeJS.Platform,
+  setup_version: string | undefined,
 ): HookConfig {
   const specs = HOOK_SPECS[client];
   const hooks: Record<string, z.infer<typeof group_schema>[]> = {};
@@ -222,6 +232,11 @@ function refreshed(
       .filter((group) => (group.hooks ?? []).length > 0);
     if (kept.length > 0) hooks[event] = kept;
   }
+  for (const spec of specs.filter((candidate) => is_introduced_since(candidate, setup_version))) {
+    const groups = hooks[spec.event] ?? [];
+    const has_own = groups.some((group) => (group.hooks ?? []).some((handler) => is_own_command(handler.command)));
+    if (!has_own) hooks[spec.event] = [...groups, own_group(spec, nemu, client, platform)];
+  }
   const { hooks: _previous, ...rest } = config;
   return Object.keys(hooks).length > 0 ? { ...rest, hooks } : rest;
 }
@@ -231,10 +246,11 @@ export async function hooks_outdated(
   nemu: string,
   client: HookClient,
   platform: NodeJS.Platform = process.platform,
+  setup_version?: string,
 ): Promise<boolean> {
   if ((await installed_hooks(path)).length === 0) return false;
   const config = await read_config(path);
-  return stable(refreshed(config, nemu, client, platform)) !== stable(config);
+  return stable(refreshed(config, nemu, client, platform, setup_version)) !== stable(config);
 }
 
 export async function refresh_hooks(
@@ -242,9 +258,10 @@ export async function refresh_hooks(
   nemu: string,
   client: HookClient,
   platform: NodeJS.Platform = process.platform,
+  setup_version?: string,
 ): Promise<boolean> {
-  if (!(await hooks_outdated(path, nemu, client, platform))) return false;
-  await write_config(path, refreshed(await read_config(path), nemu, client, platform));
+  if (!(await hooks_outdated(path, nemu, client, platform, setup_version))) return false;
+  await write_config(path, refreshed(await read_config(path), nemu, client, platform, setup_version));
   return true;
 }
 

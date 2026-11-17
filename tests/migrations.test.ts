@@ -80,6 +80,26 @@ describe("refreshing hooks", () => {
     expect(await installed_hooks(path)).toEqual(["SessionStart"]);
   });
 
+  test("adds a hook a later release introduced, only for setups made before it", async () => {
+    const events = ["SessionStart", "PostToolUse", "Stop", "PreCompact", "SessionEnd"];
+    const before = join(directory, "claude-before.json");
+    await writeFile(before, JSON.stringify(codex_hooks((hook) => `${OLD} hook ${hook} --client claude-code`, events), null, 2));
+    expect(await refresh_hooks(before, NEMU, "claude-code", "win32", "1.10.0")).toBe(true);
+    expect(await installed_hooks(before)).toContain("UserPromptSubmit");
+    expect(await readFile(before, "utf-8")).toContain(JSON.stringify(hook_command(NEMU, "prompt", "claude-code", "win32")));
+    expect(await hooks_outdated(before, NEMU, "claude-code", "win32", "1.10.0")).toBe(false);
+
+    const after = join(directory, "claude-after.json");
+    await writeFile(after, JSON.stringify(codex_hooks((hook) => `${OLD} hook ${hook} --client claude-code`, events), null, 2));
+    await refresh_hooks(after, NEMU, "claude-code", "win32", "1.10.1");
+    expect(await installed_hooks(after)).not.toContain("UserPromptSubmit");
+
+    const unknown = join(directory, "claude-unknown.json");
+    await writeFile(unknown, JSON.stringify(codex_hooks((hook) => `${OLD} hook ${hook} --client claude-code`, events), null, 2));
+    await refresh_hooks(unknown, NEMU, "claude-code", "win32");
+    expect(await installed_hooks(unknown)).not.toContain("UserPromptSubmit");
+  });
+
   test("a client with no Nemu hooks is never touched", async () => {
     const path = join(directory, "none.json");
     const text = JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "other" }] }] } });

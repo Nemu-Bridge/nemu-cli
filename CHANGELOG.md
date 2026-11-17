@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.1
+
+Updating no longer skips hooks that a newer release added. A setup made before 1.10.1 gets the
+prompt hook that shows other agents' unread messages the next time the CLI runs; hooks you removed
+yourself stay removed.
+
 ## 1.10.0
 
 `nemu studio` builds 3D models with Nemu Studio from the terminal: `create` starts a cloud job and
