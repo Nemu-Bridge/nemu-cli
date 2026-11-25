@@ -99,6 +99,7 @@ const HELP = `
                                         Import Claude Code's saved memories
     claude load sessions [--limit n]    Have Claude read past sessions and save what matters
     codex load sessions [--limit n]     The same for Codex
+    claude load vault [--vault <name>]  Have Claude index this project into a vault, in zones (or codex)
     mcp                                 Run the MCP bridge (what clients start)
     mcp config <client>                 Print config for cursor, gemini, vscode, windsurf,
                                         zed, opencode, claude, codex or remote

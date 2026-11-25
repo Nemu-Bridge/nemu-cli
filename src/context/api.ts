@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zone_schema } from "./zones.js";
 import { api } from "../http.js";
 
 const date = z.string().min(1);
@@ -50,6 +51,7 @@ const load_schema = z.object({
       }),
     )
     .optional(),
+  zones: z.array(zone_schema).max(24 * 20).optional().catch(undefined),
   truncated: z.boolean(),
   text: z.string(),
 });
@@ -198,6 +200,6 @@ const inbox_schema = z.object({
 
 export type Inbox = z.infer<typeof inbox_schema>;
 
-export async function agent_inbox(headers: Record<string, string>): Promise<Inbox> {
-  return api("GET", "/api/v1/agents/inbox", inbox_schema, { headers, timeout_ms: 4000 });
+export async function agent_inbox(headers: Record<string, string>, timeout_ms = 4000): Promise<Inbox> {
+  return api("GET", "/api/v1/agents/inbox", inbox_schema, { headers, timeout_ms });
 }

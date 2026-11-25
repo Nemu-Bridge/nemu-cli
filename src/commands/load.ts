@@ -3,11 +3,14 @@ import { readdir, readFile, stat, access } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { z } from "zod";
-import { bool_flag, number_flag, type Args } from "../args.js";
+import { bool_flag, flag, number_flag, type Args } from "../args.js";
 import { CliError } from "../errors.js";
 import { open_project, write_batch, type EntryInput } from "../context/api.js";
 import { current_project } from "../context/project.js";
 import { redact } from "../context/redact.js";
+import { build_manifest, index_prompt } from "../context/manifest.js";
+import { list_vaults } from "../vault/api.js";
+import { cli_transport, signed_in } from "../vault/connect.js";
 import { repository } from "../git.js";
 import { claude_dir, codex_dir, encode_claude_folder } from "../clients/paths.js";
 import type { ClientSpec } from "../clients/registry.js";
@@ -332,10 +335,48 @@ async function load_sessions(spec: ClientSpec, args: Args): Promise<number> {
   return launch(spec.binary, [import_prompt(spec.label, files, info.branch)]);
 }
 
+async function load_vault(spec: ClientSpec, args: Args): Promise<number> {
+  await signed_in();
+  const project = await current_project(process.cwd());
+  const vaults = (await list_vaults(cli_transport(flag(args, "workspace", "w")))).filter((vault) => vault.mode !== "private");
+  const wanted = flag(args, "vault")?.toLowerCase();
+  const vault =
+    wanted === undefined
+      ? vaults.length === 1
+        ? vaults[0]
+        : undefined
+      : vaults.find((item) => item.id === wanted || item.name.toLowerCase() === wanted);
+  if (vault === undefined) {
+    throw new CliError(
+      vaults.length === 0
+        ? "No vault to index into. A private vault cannot be used, because agents cannot read it. Create one in the Context page of the console."
+        : `Name the vault with --vault: ${vaults.map((item) => `"${item.name}"`).join(", ")}. Private vaults cannot be used, because agents cannot read them.`,
+      "invalid_arguments",
+    );
+  }
+  const manifest = await build_manifest(project.repository.root);
+  if (manifest.files.length === 0) {
+    out(`  No source files found in ${project.name}.`);
+    return 0;
+  }
+  const prompt = index_prompt(project.name, vault.name, manifest);
+  if (!(await spec.has_mcp())) await run_setup(spec, args);
+  if (!is_interactive()) {
+    out(`  Found ${manifest.files.length} file(s). Not in a terminal, so paste this prompt into ${spec.label}:`);
+    out();
+    out(prompt);
+    return 0;
+  }
+  out(`  Opening ${spec.label} to read ${manifest.files.length} file(s) and write them into "${vault.name}".`);
+  if (manifest.skipped.length > 0) out(dim(`  Left out, large or may hold secrets: ${manifest.skipped.slice(0, 8).join(", ")}`));
+  return launch(spec.binary, [prompt]);
+}
+
 export async function load(spec: ClientSpec, args: Args): Promise<number> {
   const what = args.positional[1];
   if (what === "memories") return load_memories(spec, args);
   if (what === "sessions") return load_sessions(spec, args);
-  throw new CliError(`Use: nemu ${spec.binary} load memories | sessions`, "invalid_arguments");
+  if (what === "vault") return load_vault(spec, args);
+  throw new CliError(`Use: nemu ${spec.binary} load memories | sessions | vault [--vault <name>]`, "invalid_arguments");
 }
 

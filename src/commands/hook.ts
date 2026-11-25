@@ -12,6 +12,7 @@ import { repository } from "../git.js";
 import { migrate_after_update } from "../migrations.js";
 import { clean_model, read_agent_state, save_agent_state } from "../context/agent-state.js";
 import { agent_inbox, type Inbox } from "../context/api.js";
+import { changed_zones, matching_zones, zone_hint, zone_key, zone_schema } from "../context/zones.js";
 
 const MAX_CONTEXT: Record<string, number> = { "claude-code": 9000, codex: 7500 };
 const CHECKPOINT_EDITS = 3;
@@ -25,6 +26,7 @@ const input_schema = z
     cwd: z.string().optional(),
     hook_event_name: z.string().optional(),
     source: z.string().optional(),
+    prompt: z.string().optional(),
     stop_hook_active: z.boolean().optional(),
     tool_name: z.string().optional(),
     tool_input: z.unknown().optional(),
@@ -44,6 +46,8 @@ const state_schema = z.object({
   compacted: z.boolean(),
   nudged: z.boolean().default(false),
   stop_asked: z.boolean().default(false),
+  zones: z.array(zone_schema).default([]),
+  hinted: z.array(z.string()).default([]),
   updated_at: z.number(),
 });
 
@@ -167,6 +171,8 @@ async function on_start(client: string, input: HookInput): Promise<void> {
     compacted: false,
     nudged: false,
     stop_asked: false,
+    zones: [],
+    hinted: [],
     updated_at: Date.now(),
   };
   await write_private(state_path(client, session), JSON.stringify({ ...state, branch: info.branch, updated_at: Date.now() }));
@@ -178,7 +184,16 @@ async function on_start(client: string, input: HookInput): Promise<void> {
     const project = await current_project(cwd);
     project_id = project.id;
     loaded = await load_project(project.id, info.branch);
+    await write_private(
+      state_path(client, session),
+      JSON.stringify({ ...state, branch: info.branch, zones: loaded.zones ?? [], hinted: [], updated_at: Date.now() }),
+    );
     parts.push(loaded.text);
+    const changed = await changed_zones(info.root, loaded.zones ?? []).catch(async (error: unknown) => {
+      await log_failure("zones", error);
+      return null;
+    });
+    if (changed !== null) parts.push(changed);
   } catch (error) {
     await log_failure("start", error);
     if (error instanceof CliError && error.code === "not_signed_in") {
@@ -283,13 +298,37 @@ export function inbox_context(inbox: Inbox): string | null {
   ].join("\n");
 }
 
+async function zone_context(client: string, input: HookInput): Promise<string | null> {
+  if (input.prompt === undefined) return null;
+  const path = state_path(client, input.session_id ?? "unknown");
+  const state = await read_json_file(path, state_schema);
+  if (state === null) return null;
+  const found = matching_zones(input.prompt, state.zones).filter(
+    (zone) => !state.hinted.includes(zone_key(zone)),
+  );
+  const hint = zone_hint(found, input.prompt);
+  if (hint === null) return null;
+  await write_private(path, JSON.stringify({ ...state, hinted: [...state.hinted, ...found.map(zone_key)] }));
+  return hint;
+}
+
 async function on_prompt(client: string, input: HookInput): Promise<void> {
+  const hint = await zone_context(client, input).catch(async (error: unknown) => {
+    await log_failure("zones", error);
+    return null;
+  });
   const agent = await read_agent_state(client, input.cwd ?? process.cwd());
   const headers: Record<string, string> = { "x-nemu-client": client };
   if (agent?.model !== undefined) headers["x-nemu-model"] = agent.model;
   if (input.session_id !== undefined) headers["x-nemu-session"] = input.session_id;
-  const text = inbox_context(await agent_inbox(headers));
-  if (text === null) return;
+  const inbox = await agent_inbox(headers, hint === null ? 4000 : 2000).catch(async (error: unknown) => {
+    if (hint === null) throw error;
+    await log_failure("prompt", error);
+    return null;
+  });
+  const parts = [hint, inbox === null ? null : inbox_context(inbox)].filter((part) => part !== null);
+  if (parts.length === 0) return;
+  const text = parts.join("\n\n");
   process.stdout.write(
     `${JSON.stringify({ hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: text } })}\n`,
   );
