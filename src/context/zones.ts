@@ -1,5 +1,5 @@
 import { lstat, readFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, win32 } from "node:path";
 import { z } from "zod";
 import { hash_of } from "./manifest.js";
 
@@ -50,6 +50,7 @@ export function matching_zones(prompt: string, zones: Zone[]): Zone[] {
 }
 
 async function current_hash(root: string, path: string): Promise<string | null | undefined> {
+  if (win32.isAbsolute(path)) return undefined;
   const target = resolve(root, path);
   const inside = relative(root, target);
   if (inside.length === 0 || inside.startsWith("..") || isAbsolute(inside)) return undefined;
