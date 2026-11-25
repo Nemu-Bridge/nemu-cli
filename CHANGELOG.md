@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.0
+
+The prompt hook points your agent at the vault zone that matches what you asked, by the keywords in
+the vault's `ZONES.md`, and says when a zone's source files changed since it was written. `nemu claude load vault`
+indexes a project into a vault. The matching runs on your computer.
+
 ## 1.10.1
 
 Updating no longer skips hooks that a newer release added. A setup made before 1.10.1 gets the

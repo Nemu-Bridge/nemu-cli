@@ -349,7 +349,7 @@ async function load_vault(spec: ClientSpec, args: Args): Promise<number> {
   if (vault === undefined) {
     throw new CliError(
       vaults.length === 0
-        ? "No vault to index into. A private vault cannot be used, because agents cannot read it. Create one in the Context page of the console."
+        ? "No vault to index into. A private vault cannot be used, because agents cannot read it. Create one in the Memory page of the console."
         : `Name the vault with --vault: ${vaults.map((item) => `"${item.name}"`).join(", ")}. Private vaults cannot be used, because agents cannot read them.`,
       "invalid_arguments",
     );

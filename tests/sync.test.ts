@@ -550,7 +550,12 @@ describe("nemu sync against a fake vault", () => {
     await put(a, "trailing. ", "x");
     await put(a, "drafts/secret.md", "x");
     await put(a, ".nemuignore", "drafts/\n");
-    await symlink(join(a.root, "Note.md"), join(a.root, "link.md"));
+    if (process.platform === "win32") {
+      const outside = await mkdtemp(join(scratch, "outside-"));
+      await symlink(outside, join(a.root, "link.md"), "junction");
+    } else {
+      await symlink(join(a.root, "Note.md"), join(a.root, "link.md"));
+    }
     const report = await sync(a);
     expect(report.pushed.sort()).toEqual([".nemuignore", "Note.md"]);
     const reasons = Object.fromEntries(report.skipped.map((entry) => [entry.path, entry.reason]));

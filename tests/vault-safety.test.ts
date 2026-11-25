@@ -31,8 +31,8 @@ describe("files a vault may not place", () => {
     expect(is_default_ignored("Notes/Claude.md", false)).toBe(false);
   });
 
-  test.skipIf(process.platform === "win32")("a pulled note is never written through a symlinked folder", async () => {
-    await symlink(outside, join(root, "linked"));
+  test("a pulled note is never written through a symlinked folder", async () => {
+    await symlink(outside, join(root, "linked"), "junction");
     const written = await write_atomic_file(root, "linked/escape.md", new TextEncoder().encode("x"), null);
     expect(written).toBe(false);
     expect(await readdir(outside)).toEqual([]);
