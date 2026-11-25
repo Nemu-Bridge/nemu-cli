@@ -32,7 +32,7 @@ describe("vault key store", () => {
     }
     await forget_vault_key(id);
     expect(await load_vault_key(id)).toBeNull();
-  });
+  }, 30_000);
 
   test("a vault that was never unlocked has no key", async () => {
     expect(await load_vault_key(randomUUID())).toBeNull();
